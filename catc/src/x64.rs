@@ -254,7 +254,7 @@ impl fmt::Display for Operands {
 
 impl fmt::Display for X64Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.op_code, self.args)
+        write!(f, "{} \t {}", self.op_code, self.args)
     }
 }
 
@@ -262,7 +262,7 @@ impl fmt::Display for X64Assembly {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             X64Assembly::Label(label) => format!("{}:", label),
-            X64Assembly::Instruction(ins) => format!("{}", ins),
+            X64Assembly::Instruction(ins) => format!("\t{}", ins),
         };
         write!(f, "{}", name)
     }
