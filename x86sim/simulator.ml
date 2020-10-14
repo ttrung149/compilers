@@ -1,6 +1,6 @@
 (* X86lite Simulator *)
 
-(* See the documentation in the X86lite specification, available on the 
+(* See the documentation in the X86lite specification, available on the
    course web pages, for a detailed explanation of the instruction
    semantics.
 *)
@@ -92,7 +92,7 @@ let rind : reg -> int = function
 
 (* Convert an int64 to its sbyte representation *)
 let sbytes_of_int64 (i:int64) : sbyte list =
-  let open Char in 
+  let open Char in
   let open Int64 in
   List.map (fun n -> Byte (shift_right i n |> logand 0xffL |> to_int |> chr))
            [0; 8; 16; 24; 32; 40; 48; 56]
@@ -118,7 +118,7 @@ let sbytes_of_string (s:string) : sbyte list =
 (* Serialize an instruction to sbytes *)
 let sbytes_of_ins (op, args:ins) : sbyte list =
   let check = function
-    | Imm (Lbl _) | Ind1 (Lbl _) | Ind3 (Lbl _, _) -> 
+    | Imm (Lbl _) | Ind1 (Lbl _) | Ind3 (Lbl _, _) ->
       invalid_arg "sbytes_of_ins: tried to serialize a label!"
     | o -> ()
   in
@@ -133,7 +133,7 @@ let sbytes_of_data : data -> sbyte list = function
   | Quad (Lbl _) -> invalid_arg "sbytes_of_data: tried to serialize a label!"
 
 
-(* It might be useful to toggle printing of intermediate states of your 
+(* It might be useful to toggle printing of intermediate states of your
    simulator. Our implementation uses this mutable flag to turn on/off
    printing.  For instance, you might write something like:
 
@@ -159,14 +159,18 @@ let map_addr (addr:quad) : int option =
   let in_range_hi addr = Int64.compare addr mem_top < 0 in
     if in_range_hi addr && in_range_lo addr
     then Some(Int64.to_int(Int64.sub addr mem_bot))
-    else None  
+    else None
 
 (* Step function helper function -------------------------------------------- *)
 
 (* Increment program counter (%rip register) *)
 let increment_rip_by (m:mach) (i:int64) : unit =
   let rip_idx = rind Rip in
-    m.regs.(rip_idx) <- Int64.add m.regs.(rip_idx) i 
+    m.regs.(rip_idx) <- Int64.add m.regs.(rip_idx) i
+
+let fetch_next_isn_rip (m:mach) : unit =
+    increment_rip_by m 8L
+
 
 (* Load and store ----------------------------------------------------------- *)
 (* Fetch data from memory address (LOAD) *)
@@ -213,24 +217,32 @@ let store_reg (data:quad) (reg:reg) (m:mach) : unit =
 
 
 (* Condition flags setter --------------------------------------------------- *)
+let set_overflow_flag (result:Int64_overflow.t) (m:mach) : unit =
+  m.flags.fo <- result.overflow
+
+let set_zero_flag (result:int64) (m:mach) : unit =
+  m.flags.fz <- result = 0L
+
+let set_signed_flag (result:int64) (m:mach) : unit =
+  m.flags.fs <- (Int64.shift_right result 63) = 1L
+
 let set_cond_flags (result:Int64_overflow.t) (m:mach) : unit =
-  let value = result.value in
-    m.flags.fo <- result.overflow;
-    m.flags.fz <- value = 0L;
-    m.flags.fs <- (Int64.shift_right value 63) = 1L;
-    ()
+  set_overflow_flag result m;
+  set_zero_flag result.value m;
+  set_signed_flag result.value m;
+  ()
 
 
 (* Operands eval helper ----------------------------------------------------- *)
 (* Eval indirect address
  *   - Ind1: imm       : displacement by a literal or label imm value
- *   - Ind2: reg       : indirect reference to an address held in a register 
+ *   - Ind2: reg       : indirect reference to an address held in a register
  *   - Ind3L imm * reg : offset of an address held in a register
  *)
 let eval_indirect_address (m:mach) (operand:operand) : int64 =
     match operand with
     | Ind1 (Lit x)      -> x
-    | Ind1 (Lbl _)      -> failwith "TODO: Unable to eval label indirect" 
+    | Ind1 (Lbl _)      -> failwith "TODO: Unable to eval label indirect"
     | Ind2 reg          -> m.regs.(rind reg)
     | Ind3 (Lit x, reg) -> Int64.add m.regs.(rind reg) x
     | Ind3 (Lbl _, _)   -> failwith "Fail to eval Ind3 for label immediate"
@@ -240,7 +252,7 @@ let eval_indirect_address (m:mach) (operand:operand) : int64 =
 let eval_operand_val (m:mach) (operand:operand) : int64 =
     match operand with
     | Imm (Lit x) -> x
-    | Imm (Lbl _) -> failwith "Fail to eval value for label immediate" 
+    | Imm (Lbl _) -> failwith "Fail to eval value for label immediate"
     | Reg reg     -> m.regs.(rind reg)
     | Ind1 _ | Ind2 _ | Ind3 _ ->
       let addr = eval_indirect_address m operand in load_mem addr m
@@ -248,11 +260,11 @@ let eval_operand_val (m:mach) (operand:operand) : int64 =
 (* Generic store function *)
 let store (operand:operand) (data:quad) (m:mach) : unit =
   match operand with
-  | Imm _   -> failwith "Unable to store immediate value operand" 
+  | Imm _   -> failwith "Unable to store immediate value operand"
   | Reg reg -> store_reg data reg m
   | Ind1 _ | Ind2 _ | Ind3 _ ->
     let addr = eval_indirect_address m operand in
-      store_mem addr data m 
+      store_mem addr data m
 
 (* Eval arith instructions *)
 let eval_arith (m:mach) (opcode:opcode) (operands:operand list) : unit =
@@ -273,7 +285,7 @@ let eval_arith (m:mach) (opcode:opcode) (operands:operand list) : unit =
     let dest = eval_operand_val m operand_2 in
     let res  = Int64_overflow.add dest src in
       store operand_2 res.value m;
-      set_cond_flags res m;
+      set_cond_flags res m
 
   | Subq ->
     let operand_1 = List.nth operands 0 in
@@ -282,48 +294,152 @@ let eval_arith (m:mach) (opcode:opcode) (operands:operand list) : unit =
     let dest = eval_operand_val m operand_2 in
     let res  = Int64_overflow.sub dest src in
       store operand_2 res.value m;
-      set_cond_flags res m;
+      set_cond_flags res m
 
-  | Imulq -> 
+  | Imulq ->
     let operand_1 = List.nth operands 0 in
     let operand_2 = List.nth operands 1 in
     let src = eval_operand_val m operand_1 in
     let reg = eval_operand_val m operand_2 in
     let res = Int64_overflow.mul reg src in
       store operand_2 res.value m;
-      set_cond_flags res m;
+      set_cond_flags res m
 
   | Incq ->
     let operand_1 = List.nth operands 0 in
     let src = eval_operand_val m operand_1 in
     let res = Int64_overflow.succ src in
       store operand_1 res.value m;
-      set_cond_flags res m;
+      set_cond_flags res m
 
-  | Decq -> 
+  | Decq ->
     let operand_1 = List.nth operands 0 in
     let src = eval_operand_val m operand_1 in
     let res = Int64_overflow.pred src in
       store operand_1 res.value m;
-      set_cond_flags res m;
+      set_cond_flags res m
 
   | _ -> ()
 
 (* Eval logic instructions *)
-let eval_logic (m:mach) (opcode:opcode) (operands:operand list) : unit = () 
-let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit = () 
-let eval_data  (m:mach) (opcode:opcode) (operands:operand list) : unit = () 
-let eval_flow  (m:mach) (opcode:opcode) (operands:operand list) : unit = () 
+let eval_logic (m:mach) (opcode:opcode) (operands:operand list) : unit =
+  match opcode with
+  | Notq ->
+    let operand_1 = List.nth operands 0 in
+    let dest = eval_operand_val m operand_1 in
+      store operand_1 (Int64.lognot dest) m
+
+  | Andq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let src  = eval_operand_val m operand_1 in
+    let dest = eval_operand_val m operand_2 in
+    let res = Int64.logand dest src in
+      store operand_2 res m;
+      set_zero_flag res m;
+      set_signed_flag res m;
+      m.flags.fo <- false
+
+  | Orq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let src  = eval_operand_val m operand_1 in
+    let dest = eval_operand_val m operand_2 in
+    let res = Int64.logor dest src in
+      store operand_2 res m;
+      set_zero_flag res m;
+      set_signed_flag res m;
+      m.flags.fo <- false
+
+  | Xorq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let src  = eval_operand_val m operand_1 in
+    let dest = eval_operand_val m operand_2 in
+    let res = Int64.logxor dest src in
+      store operand_2 res m;
+      set_zero_flag res m;
+      set_signed_flag res m;
+      m.flags.fo <- false
+
+  | _ -> ()
+
+let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit =
+  let eval_amt (m:mach)(operand:operand) : int64 =
+    match operand with
+    | Imm Lit x -> x
+    | Reg Rcx -> m.regs.(rind Rcx)
+    | _ -> failwith "Invalid shift amount"
+  in
+  match opcode with
+  | Sarq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let amt  = Int64.to_int(eval_amt m operand_1) in
+    let dest = eval_operand_val m operand_2 in
+    let res = Int64.shift_right dest amt in
+    let set_sarq_flags =
+      match amt with
+      | 0 -> ()
+      | 1 -> m.flags.fo <- false
+      | _ -> set_zero_flag res m; set_signed_flag res m
+    in
+      set_sarq_flags
+
+  | Shlq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let amt  = Int64.to_int(eval_amt m operand_1) in
+    let dest = eval_operand_val m operand_2 in
+    let res = Int64.shift_left dest amt in
+    let set_shlq_flags =
+      match amt with
+      | 0 -> ()
+      | 1 ->
+        if Int64.logand (Int64.shift_right dest 63) 1L <>
+           Int64.logand (Int64.shift_right dest 64) 1L
+        then m.flags.fo <- true
+      | _ -> set_zero_flag res m; set_signed_flag res m
+    in
+      set_shlq_flags
+
+  | Shrq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let amt  = Int64.to_int(eval_amt m operand_1) in
+    let dest = eval_operand_val m operand_2 in
+    let res = Int64.shift_right_logical dest amt in
+    let set_shrq_flags =
+      match amt with
+      | 1 -> m.flags.fo <- (Int64.shift_right_logical dest 63) = 1L
+      | _ -> set_zero_flag res m; set_signed_flag res m
+    in
+      set_shrq_flags
+
+  | Set cnd ->
+    let curr_flags = { fo = m.flags.fo; fs = m.flags.fs; fz = m.flags.fz } in
+    if interp_cnd curr_flags cnd
+    then ()
+    else ()
+
+  | _ -> ()
+
+let eval_data  (m:mach) (opcode:opcode) (operands:operand list) : unit = ()
+let eval_flow  (m:mach) (opcode:opcode) (operands:operand list) : unit = ()
 
 (* Eval instruction dispatcher *)
 let eval_instr (m:mach) (instruction:ins) : unit =
   match instruction with
   | (opcode, operands) ->
     match opcode with
-    | Negq | Addq | Subq  | Imulq | Incq| Decq  -> eval_arith m opcode operands
-    | Notq | Andq | Orq   | Xorq                -> eval_logic m opcode operands 
-    | Sarq | Shlq | Shrq  | Set _               -> eval_bit_m m opcode operands
-    | Leaq | Movq | Pushq | Popq                -> eval_data  m opcode operands
+    | Negq | Addq | Subq  | Imulq | Incq | Decq -> eval_arith m opcode operands;
+                                                   fetch_next_isn_rip m
+    | Notq | Andq | Orq   | Xorq                -> eval_logic m opcode operands;
+                                                   fetch_next_isn_rip m
+    | Sarq | Shlq | Shrq  | Set _               -> eval_bit_m m opcode operands;
+                                                   fetch_next_isn_rip m
+    | Leaq | Movq | Pushq | Popq                -> eval_data  m opcode operands;
+                                                   fetch_next_isn_rip m
     | Cmpq | Jmp  | Callq | Retq | J _          -> eval_flow  m opcode operands
 
 (* Dispatch eval function based on provided symbolic byte *)
@@ -342,7 +458,7 @@ let dispatch_eval_instr (m:mach) (instr:sbyte) : unit =
 let step (m:mach) : unit =
   let rip_idx = rind Rip in
   let fetched_instruction =
-    match map_addr (m.regs.(rip_idx)) with
+    match map_addr m.regs.(rip_idx) with
     | None -> raise X86lite_segfault
     | Some addr -> m.mem.(addr)
   in
@@ -352,9 +468,9 @@ let step (m:mach) : unit =
 (* Run program -------------------------------------------------------------- *)
 
 (* Runs the machine until the rip register reaches a designated
-   memory address. Returns the contents of %rax when the 
+   memory address. Returns the contents of %rax when the
    machine halts. *)
-let run (m:mach) : int64 = 
+let run (m:mach) : int64 =
   while m.regs.(rind Rip) <> exit_addr do step m done;
   m.regs.(rind Rax)
 
@@ -380,7 +496,7 @@ exception Redefined_sym of lbl
       Note: the size of an Asciz string section is (1 + the string length)
             due to the null terminator
 
-   - resolve the labels to concrete addresses and 'patch' the instructions to 
+   - resolve the labels to concrete addresses and 'patch' the instructions to
      replace Lbl values with the corresponding Imm values.
 
    - the text segment starts at the lowest address
@@ -391,18 +507,18 @@ exception Redefined_sym of lbl
 let assemble (p:prog) : exec =
 failwith "assemble unimplemented"
 
-(* Convert an object file into an executable machine state. 
+(* Convert an object file into an executable machine state.
     - allocate the mem array
-    - set up the memory state by writing the symbolic bytes to the 
-      appropriate locations 
+    - set up the memory state by writing the symbolic bytes to the
+      appropriate locations
     - create the inital register state
       - initialize rip to the entry point address
-      - initializes rsp to the last word in memory 
+      - initializes rsp to the last word in memory
       - the other registers are initialized to 0
     - the condition code flags start as 'false'
 
-  Hint: The Array.make, Array.blit, and Array.of_list library functions 
+  Hint: The Array.make, Array.blit, and Array.of_list library functions
   may be of use.
 *)
-let load {entry; text_pos; data_pos; text_seg; data_seg} : mach = 
+let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
 failwith "load unimplemented"
