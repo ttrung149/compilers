@@ -212,10 +212,6 @@ let store_reg (data:quad) (reg:reg) (m:mach) : unit =
   m.regs.(rind reg) <- data
 
 
-(* Stack helper ------------------------------------------------------------- *)
-
-
-
 (* Condition flags setter --------------------------------------------------- *)
 let set_overflow_flag (result:Int64_overflow.t) (m:mach) : unit =
   m.flags.fo <- result.overflow
@@ -224,7 +220,7 @@ let set_zero_flag (result:int64) (m:mach) : unit =
   m.flags.fz <- result = 0L
 
 let set_signed_flag (result:int64) (m:mach) : unit =
-  m.flags.fs <- (Int64.shift_right result 63) = 1L
+  m.flags.fs <- (Int64.shift_right_logical result 63) = 1L
 
 let set_cond_flags (result:Int64_overflow.t) (m:mach) : unit =
   set_overflow_flag result m;
@@ -384,7 +380,7 @@ let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit =
       | 1 -> m.flags.fo <- false
       | _ -> set_zero_flag res m; set_signed_flag res m
     in
-      set_sarq_flags
+    store operand_2 res m; set_sarq_flags
 
   | Shlq ->
     let operand_1 = List.nth operands 0 in
@@ -401,7 +397,7 @@ let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit =
         then m.flags.fo <- true
       | _ -> set_zero_flag res m; set_signed_flag res m
     in
-      set_shlq_flags
+    store operand_2 res m; set_shlq_flags
 
   | Shrq ->
     let operand_1 = List.nth operands 0 in
@@ -414,8 +410,9 @@ let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit =
       | 1 -> m.flags.fo <- (Int64.shift_right_logical dest 63) = 1L
       | _ -> set_zero_flag res m; set_signed_flag res m
     in
-      set_shrq_flags
+    store operand_2 res m; set_shrq_flags
 
+(* TODO IMPLEMENT *)
   | Set cnd ->
     let curr_flags = { fo = m.flags.fo; fs = m.flags.fs; fz = m.flags.fz } in
     if interp_cnd curr_flags cnd
@@ -424,8 +421,55 @@ let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit =
 
   | _ -> ()
 
-let eval_data  (m:mach) (opcode:opcode) (operands:operand list) : unit = ()
-let eval_flow  (m:mach) (opcode:opcode) (operands:operand list) : unit = ()
+(* Eval data movement instructions *)
+let eval_data (m:mach) (opcode:opcode) (operands:operand list) : unit =
+  match opcode with
+  | Leaq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let addr_of_ind = eval_indirect_address m operand_1 in
+    store operand_2 addr_of_ind m
+
+  | Movq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let src_val = eval_operand_val m operand_1 in
+    store operand_2 src_val m
+
+  | Pushq ->
+    let operand_1 = List.nth operands 0 in
+    let src_val = eval_operand_val m operand_1 in
+    m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
+    store (Ind2 Rsp) src_val m
+
+  | Popq ->
+    let operand_1 = List.nth operands 0 in
+    let src_val = eval_operand_val m (Ind2 Rsp) in
+    store operand_1 src_val m;
+    m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L;
+
+  | _ -> ()
+
+(* Eval control flow instructions *)
+let eval_flow (m:mach) (opcode:opcode) (operands:operand list) : unit =
+  match opcode with
+  | Cmpq ->
+    let operand_1 = List.nth operands 0 in
+    let operand_2 = List.nth operands 1 in
+    let src  = eval_operand_val m operand_1 in
+    let dest = eval_operand_val m operand_2 in
+    let res  = Int64_overflow.sub dest src in
+    set_cond_flags res m
+
+  | Jmp ->
+    let operand_1 = List.nth operands 0 in
+    let src  = eval_operand_val m operand_1 in
+    m.regs.(rind Rip) <- src
+
+  | Callq -> ()
+  | Retq -> ()
+  | J _ -> ()
+  | _ -> ()
 
 (* Eval instruction dispatcher *)
 let eval_instr (m:mach) (instruction:ins) : unit =
@@ -504,8 +548,127 @@ exception Redefined_sym of lbl
 
   HINT: List.fold_left and List.fold_right are your friends.
  *)
+
+type seg_type = Text | Data
+
+let compute_seg_size (seg_type:seg_type) (e:elem) : int64 =
+  match (seg_type, e.asm) with
+  | (Text, Text t) -> Int64.of_int ((List.length t) * 8)
+  | (Data, Data d) ->
+    let get_data_size (acc:int64) (data:data) : int64 =
+      match data with
+      | Asciz str ->
+        Int64.add (Int64.add acc 1L) (Int64.of_int (String.length str))
+      | Quad imm -> Int64.add acc 8L
+    in
+    List.fold_left get_data_size 0L d
+  | _ -> 0L
+
+type lbl_tbl = (lbl, quad) Hashtbl.t
+type lbl_addr_lookup = lbl_tbl * int64
+
+let update_lbl_tbl (seg_type:seg_type) (lookup: lbl_addr_lookup) (e:elem)
+  : lbl_addr_lookup =
+  match seg_type with
+  | Text ->
+      let seg_sz =
+        match e.asm with
+        | Text _ -> compute_seg_size Text e
+        | Data _ -> 0L
+      in
+      let (lbl_tbl, acc_sz) = lookup in
+      let _ =
+        match (Hashtbl.find_opt lbl_tbl e.lbl, e.asm) with
+        | (None, Text _)   -> Hashtbl.add lbl_tbl e.lbl acc_sz
+        | (Some _, Text _) -> raise (Redefined_sym e.lbl)
+        | _                -> ()
+      in
+        (lbl_tbl, Int64.add seg_sz acc_sz)
+  | Data ->
+      let seg_sz =
+        match e.asm with
+        | Text _ -> 0L
+        | Data _ -> compute_seg_size Data e
+      in
+      let (lbl_tbl, acc_sz) = lookup in
+      let _ =
+        match (Hashtbl.find_opt lbl_tbl e.lbl, e.asm) with
+        | (None, Data _)   -> Hashtbl.add lbl_tbl e.lbl acc_sz
+        | (Some _, Data _) -> raise (Redefined_sym e.lbl)
+        | _                -> ()
+      in
+        (lbl_tbl, Int64.add seg_sz acc_sz)
+
+(*
+ * Resolve operands with label, given a label lookup table and original
+ * list of operands.
+ *)
+let resolve_lbl_operand (operands:operand list) (lookup:lbl_tbl) : operand list =
+  let find_lbl (lbl:lbl) : int64 =
+    match (Hashtbl.find_opt lookup lbl) with
+    | Some addr -> addr
+    | None -> raise (Undefined_sym lbl)
+  in
+  let resolve_addr (operand:operand) : operand =
+    match operand with
+    | Imm (Lbl l) -> Imm (Lit (find_lbl l))
+    | Ind1 (Lbl l) -> Ind1 (Lit (find_lbl l))
+    | Ind3 ((Lbl l), r) -> Ind3 ((Lit (find_lbl l)), r)
+    | op -> op
+  in
+  List.map resolve_addr operands
+
+let resolve_lbl_text (lookup:lbl_tbl) (acc:sbyte list) (ins:ins) : sbyte list =
+  let (opcode, operands) = ins in
+  List.append acc (sbytes_of_ins (opcode, (resolve_lbl_operand operands lookup)))
+
+let resolve_lbl_data (lookup:lbl_tbl) (acc:sbyte list) (data:data) : sbyte list =
+  let find_lbl (lbl:lbl) : int64 =
+    match (Hashtbl.find_opt lookup lbl) with
+    | Some addr -> addr
+    | None -> raise (Undefined_sym lbl)
+  in
+  match data with
+  | Asciz str    -> List.append acc (sbytes_of_string str)
+  | Quad (Lit x) -> List.append acc (sbytes_of_int64 x)
+  | Quad (Lbl l) -> List.append acc (sbytes_of_data (Quad (Lit (find_lbl l))))
+
+let serialize_seg (seg_type:seg_type) (lookup:lbl_tbl) (acc:sbyte list) (e:elem)
+    : sbyte list =
+  match (seg_type, e.asm) with
+  | (Text, Text ins_list) ->
+    List.append acc (List.fold_left (resolve_lbl_text lookup) [] ins_list)
+  | (Data, Data data_list) ->
+    List.append acc (List.fold_left (resolve_lbl_data lookup) [] data_list)
+  | (_, _) -> acc
+
 let assemble (p:prog) : exec =
-failwith "assemble unimplemented"
+  let init_lookup : lbl_tbl = Hashtbl.create 0xFFFF in
+  let text_start : quad = 0x400000L in
+
+  let (new_text_lookup, text_end)
+    = List.fold_left (update_lbl_tbl Text) (init_lookup, text_start) p
+  in
+  let (new_lookup, text_sz)
+    = List.fold_left (update_lbl_tbl Data) (new_text_lookup, text_end) p
+  in
+
+  let text_sbytes = List.fold_left (serialize_seg Text new_lookup) [] p in
+  let data_sbytes = List.fold_left (serialize_seg Data new_lookup) [] p in
+
+  let main =
+    match (Hashtbl.find_opt new_text_lookup "main") with
+    | Some addr -> addr
+    | None -> raise (Undefined_sym "main")
+  in
+  {
+    entry = main;
+    text_pos = text_start;
+    data_pos = text_end;
+    text_seg = text_sbytes;
+    data_seg = data_sbytes
+  }
+
 
 (* Convert an object file into an executable machine state.
     - allocate the mem array
@@ -521,4 +684,20 @@ failwith "assemble unimplemented"
   may be of use.
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
-failwith "load unimplemented"
+  let text_arr = Array.of_list text_seg in
+  let data_arr = Array.of_list data_seg in
+  let text_data_arr = Array.append text_arr data_arr in
+  let mem_arr =
+    Array.append (Array.make 0xFFF8 InsFrag)
+                 (Array.of_list (sbytes_of_int64 exit_addr)) in
+
+  let init_mem =
+    Array.blit text_data_arr 0 mem_arr 0 (Array.length text_data_arr) in
+  let flags = { fo = false; fz = false; fs = false } in
+  let regs  = Array.make 17 0L in
+
+  init_mem;
+  Array.set regs (rind Rip) entry;
+  Array.set regs (rind Rsp) 0x40FFF8L;
+  { flags = flags; regs = regs; mem = mem_arr }
+
