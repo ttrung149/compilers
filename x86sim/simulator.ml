@@ -238,7 +238,7 @@ let set_cond_flags (result:Int64_overflow.t) (m:mach) : unit =
 let eval_indirect_address (m:mach) (operand:operand) : int64 =
     match operand with
     | Ind1 (Lit x)      -> x
-    | Ind1 (Lbl _)      -> failwith "TODO: Unable to eval label indirect"
+    | Ind1 (Lbl _)      -> failwith "Unable to eval label indirect"
     | Ind2 reg          -> m.regs.(rind reg)
     | Ind3 (Lit x, reg) -> Int64.add m.regs.(rind reg) x
     | Ind3 (Lbl _, _)   -> failwith "Fail to eval Ind3 for label immediate"
@@ -252,6 +252,20 @@ let eval_operand_val (m:mach) (operand:operand) : int64 =
     | Reg reg     -> m.regs.(rind reg)
     | Ind1 _ | Ind2 _ | Ind3 _ ->
       let addr = eval_indirect_address m operand in load_mem addr m
+
+(* Store lower byte function *)
+let store_lower_byte (operand:operand) (data:int64) (m:mach) : unit =
+  match operand with
+  | Reg r ->
+    let top = Int64.shift_left (Int64.shift_right_logical m.regs.(rind r) 8) 8 in
+      m.regs.(rind r) <- Int64.logor top data
+  | Ind1 _ | Ind2 _ | Ind3 _ ->
+      let addr = eval_indirect_address m operand in
+      let mapped_addr = match (map_addr addr) with
+        | None      -> raise X86lite_segfault
+        | Some addr -> addr
+      in m.mem.(mapped_addr) <- List.nth (sbytes_of_int64 data) 0
+  | _ -> failwith "Fail to store lower byte"
 
 (* Generic store function *)
 let store (operand:operand) (data:quad) (m:mach) : unit =
@@ -412,12 +426,12 @@ let eval_bit_m (m:mach) (opcode:opcode) (operands:operand list) : unit =
     in
     store operand_2 res m; set_shrq_flags
 
-(* TODO IMPLEMENT *)
   | Set cnd ->
+    let operand_1 = List.nth operands 0 in
     let curr_flags = { fo = m.flags.fo; fs = m.flags.fs; fz = m.flags.fz } in
     if interp_cnd curr_flags cnd
-    then ()
-    else ()
+    then store_lower_byte operand_1 1L m
+    else store_lower_byte operand_1 0L m
 
   | _ -> ()
 
@@ -456,19 +470,37 @@ let eval_flow (m:mach) (opcode:opcode) (operands:operand list) : unit =
   | Cmpq ->
     let operand_1 = List.nth operands 0 in
     let operand_2 = List.nth operands 1 in
-    let src  = eval_operand_val m operand_1 in
-    let dest = eval_operand_val m operand_2 in
-    let res  = Int64_overflow.sub dest src in
-    set_cond_flags res m
+    let src_1  = eval_operand_val m operand_1 in
+    let src_2 = eval_operand_val m operand_2 in
+    let res  = Int64_overflow.sub src_2 src_1 in
+    set_cond_flags res m;
+    m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L
 
   | Jmp ->
     let operand_1 = List.nth operands 0 in
     let src  = eval_operand_val m operand_1 in
     m.regs.(rind Rip) <- src
 
-  | Callq -> ()
-  | Retq -> ()
-  | J _ -> ()
+  | Callq ->
+    let operand_1 = List.nth operands 0 in
+    let src  = eval_operand_val m operand_1 in
+    let next_rip = Int64.add m.regs.(rind Rip) 8L in
+    m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
+    store (Ind2 Rsp) next_rip m;
+    m.regs.(rind Rip) <- src
+
+  | Retq ->
+    let return_addr = eval_operand_val m (Ind2 Rsp) in
+    store (Reg Rip) return_addr m;
+    m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
+
+  | J cond ->
+    let operand_1 = List.nth operands 0 in
+    let src = eval_operand_val m operand_1 in
+    let flags = {fo = m.flags.fo; fz = m.flags.fz; fs = m.flags.fs } in
+    if interp_cnd flags cond then m.regs.(rind Rip) <- src
+    else m.regs.(rind Rip) <- Int64.add m.regs.(rind Rip) 8L
+
   | _ -> ()
 
 (* Eval instruction dispatcher *)
@@ -618,10 +650,12 @@ let resolve_lbl_operand (operands:operand list) (lookup:lbl_tbl) : operand list 
   in
   List.map resolve_addr operands
 
+(* Resolve label for text segment, given a label lookup table and original ins *)
 let resolve_lbl_text (lookup:lbl_tbl) (acc:sbyte list) (ins:ins) : sbyte list =
   let (opcode, operands) = ins in
   List.append acc (sbytes_of_ins (opcode, (resolve_lbl_operand operands lookup)))
 
+(* Resolve label for data segment, given a label lookup table and original data *)
 let resolve_lbl_data (lookup:lbl_tbl) (acc:sbyte list) (data:data) : sbyte list =
   let find_lbl (lbl:lbl) : int64 =
     match (Hashtbl.find_opt lookup lbl) with
@@ -633,6 +667,7 @@ let resolve_lbl_data (lookup:lbl_tbl) (acc:sbyte list) (data:data) : sbyte list 
   | Quad (Lit x) -> List.append acc (sbytes_of_int64 x)
   | Quad (Lbl l) -> List.append acc (sbytes_of_data (Quad (Lit (find_lbl l))))
 
+(* Serialize mem segment *)
 let serialize_seg (seg_type:seg_type) (lookup:lbl_tbl) (acc:sbyte list) (e:elem)
     : sbyte list =
   match (seg_type, e.asm) with
@@ -657,7 +692,7 @@ let assemble (p:prog) : exec =
   let data_sbytes = List.fold_left (serialize_seg Data new_lookup) [] p in
 
   let main =
-    match (Hashtbl.find_opt new_text_lookup "main") with
+    match (Hashtbl.find_opt new_lookup "main") with
     | Some addr -> addr
     | None -> raise (Undefined_sym "main")
   in
@@ -668,7 +703,6 @@ let assemble (p:prog) : exec =
     text_seg = text_sbytes;
     data_seg = data_sbytes
   }
-
 
 (* Convert an object file into an executable machine state.
     - allocate the mem array
