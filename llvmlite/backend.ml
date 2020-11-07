@@ -89,10 +89,16 @@ let lookup m x = List.assoc x m
    the X86 instruction that moves an LLVM operand into a designated
    destination (usually a register).
 *)
-let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
-  function _ -> failwith "compile_operand unimplemented"
-
-
+let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins list =
+  function (ll_operand:Ll.operand) ->
+    match ll_operand with
+    | Null    -> [Movq, [Imm(Lit 0L); dest]]
+    | Const x -> [Movq, [Imm(Lit x); dest]]
+    | Gid id  -> [Leaq, [Ind3((Lbl(Platform.mangle id)), Rip); dest]]
+    | Id id   -> [
+        (Movq, [(lookup ctxt.layout id); Reg(R11)]);
+        (Movq, [Reg(R11); dest])
+      ]
 
 (* compiling call  ---------------------------------------------------------- *)
 
@@ -114,6 +120,9 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
    needed). ]
 *)
 
+(*let compile_call (ctxt:ctxt) (op:operand, args:(ty * operand) list) : ins =
+
+  *)
 
 
 
@@ -140,9 +149,15 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
      Your function should simply return 0 in those cases
 *)
 let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
-failwith "size_ty not implemented"
-
-
+  let acc_size (size:int) (ll_type:Ll.ty) : int =
+    size + (size_ty tdecls ll_type)
+  in
+  match t with
+  | Void | I8  | Fun _ -> 0
+  | I1   | I64 | Ptr _ -> 8
+  | Struct elems -> List.fold_left acc_size 0 elems
+  | Array (num, t) -> (size_ty tdecls t) * num
+  | Namedt tid -> size_ty tdecls (lookup tdecls tid)
 
 
 (* Generates code that computes a pointer value.
@@ -170,7 +185,7 @@ failwith "size_ty not implemented"
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
-let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
+let compile_gep (ctxt:ctxt) (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
 failwith "compile_gep not implemented"
 
 
@@ -199,14 +214,33 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-      failwith "compile_insn not implemented"
+  []
 
+(*
+  match i with
+  | Binop (bop, ty, operand_1, operand_2) ->
+    match bop with
+    | Add ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg R13) operand_2) @
+      [
+        (Addq, [Reg R12; Reg R13]);
+        (Movq, [Reg R13; (lookup ctxt.layout uid)])
+      ]
+    | Sub ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg R13) operand_2) @
+      [
+        (Subq, [Reg R13; Reg R12]);
+        (Movq, [Reg R12; (lookup ctxt.layout uid)])
+      ]
+    | _ -> []
 
-
+*)
 (* compiling terminators  --------------------------------------------------- *)
 
-(* prefix the function name [fn] to a label to ensure that the X86 labels are 
-   globally unique . *)
+(* prefix the function name [fn] to a label to ensure that the X86 labels are
+   globally unique. *)
 let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
 
 (* Compile block terminators is not too difficult:
@@ -222,18 +256,36 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
    [fn] - the name of the function containing this terminator
 *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
-  failwith "compile_terminator not implemented"
+  match t with
+  | Ret (ty, operand) ->
+    let exit_sequence = [
+        (* Restore callee save registers *)
+        (Movq, [(Ind3(Lit(Int64.neg 8L) , Rbp)); (Reg Rbx)]);
+        (Movq, [(Ind3(Lit(Int64.neg 16L), Rbp)); (Reg R12)]);
+        (Movq, [(Ind3(Lit(Int64.neg 24L), Rbp)); (Reg R13)]);
+        (Movq, [(Ind3(Lit(Int64.neg 32L), Rbp)); (Reg R14)]);
+        (Movq, [(Ind3(Lit(Int64.neg 40L), Rbp)); (Reg R15)]);
+    ] in
+    []
+  | Br lbl -> []
+  | Cbr (operand, lbl1, lbl2) -> []
 
 
 (* compiling blocks --------------------------------------------------------- *)
 
-(* We have left this helper function here for you to complete. 
+(* We have left this helper function here for you to complete.
    [fn] - the name of the function containing this block
    [ctxt] - the current context
    [blk]  - LLVM IR code for the block
 *)
 let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list =
-  failwith "compile_block not implemented"
+  let blk_term_id, blk_terminator = blk.term in
+  let _compile_insn (insn) = compile_insn ctxt insn in
+
+  let compiled_insns = List.flatten (List.map _compile_insn blk.insns) in
+  let compiled_term  = compile_terminator fn ctxt blk_terminator in
+  compiled_insns @ compiled_term
+
 
 let compile_lbl_block fn lbl ctxt blk : elem =
   Asm.text (mk_lbl fn lbl) (compile_block fn ctxt blk)
@@ -251,8 +303,14 @@ let compile_lbl_block fn lbl ctxt blk : elem =
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
 let arg_loc (n : int) : operand =
-failwith "arg_loc not implemented"
-
+  match n with
+  | 0 -> Reg Rdi
+  | 1 -> Reg Rsi
+  | 2 -> Reg Rdx
+  | 3 -> Reg Rcx
+  | 4 -> Reg R08
+  | 5 -> Reg R09
+  | _ -> Ind3(Lit (Int64.of_int ((n - 4) * 8)), Rbp)
 
 (* We suggest that you create a helper function that computes the
    stack layout for a given function declaration.
@@ -282,9 +340,59 @@ failwith "stack_layout not implemented"
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
-let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-failwith "compile_fdecl unimplemented"
+let compile_fdecl (tdecls:(tid * ty) list) (name:string)
+                  ({ f_ty; f_param; f_cfg }:fdecl) : prog =
 
+  let ctxt = { tdecls = tdecls; layout = (stack_layout f_param f_cfg) } in
+  let entry_blk, lbl_blks =
+    match f_cfg with
+    | (blk, blks) -> blk, blks
+  in
+
+  let entry_term_uid, entry_term =
+    match entry_blk with
+    | { insns = _; term = (uid, terminator) } -> uid, terminator
+  in
+
+  (* Helper function: maps i-th arg to stack slot  *)
+  let map_arg_to_stk (i:int) (uid:uid) : ins list =
+     let op = arg_loc i in
+     [
+       (Movq, [op; Reg R10]);
+       (Movq, [Reg R10; lookup ctxt.layout uid])
+     ]
+  in
+  let compiled_args = List.flatten (List.mapi map_arg_to_stk f_param) in
+
+  (* Allocate new stack frame, push callee saved registers onto the stack *)
+  let entry_sequence = [
+    (Pushq, [Reg Rbp]);
+    (Movq,  [Reg Rsp; Reg Rbp]);
+    (Pushq, [Reg Rbx]);
+    (Pushq, [Reg R12]);
+    (Pushq, [Reg R13]);
+    (Pushq, [Reg R14]);
+    (Pushq, [Reg R15]);
+    (* (Movq, [Reg Rsp; Reg R11]); *)
+    (Subq,  [Imm(Lit(Int64.of_int ((List.length ctxt.layout) * 8))); Reg Rsp])
+  ]
+  in
+
+  let entry_compiled_insns = [
+    Asm.gtext(Platform.mangle name)
+    (
+      entry_sequence
+      @ compiled_args
+      @ (compile_block name ctxt entry_blk)
+      @ (compile_terminator name ctxt entry_term)
+    )
+  ]
+  in
+
+  let lbl_blks_compiled_insns =
+    List.map (fun (lbl, blk) -> compile_lbl_block name lbl ctxt blk) lbl_blks
+  in
+  entry_compiled_insns @ lbl_blks_compiled_insns
 
 
 (* compile_gdecl ------------------------------------------------------------ *)
