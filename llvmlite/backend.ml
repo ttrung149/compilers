@@ -214,11 +214,10 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-  []
-
-(*
   match i with
-  | Binop (bop, ty, operand_1, operand_2) ->
+
+  (* BINOP *)
+  | Binop (bop, ty, operand_1, operand_2) -> (
     match bop with
     | Add ->
       (compile_operand ctxt (Reg R12) operand_1) @
@@ -228,15 +227,109 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
         (Movq, [Reg R13; (lookup ctxt.layout uid)])
       ]
     | Sub ->
+      (compile_operand ctxt (Reg R13) operand_1) @
+      (compile_operand ctxt (Reg R12) operand_2) @
+      [
+        (Subq, [Reg R12; Reg R13]);
+        (Movq, [Reg R13; (lookup ctxt.layout uid)])
+      ]
+    | Mul ->
       (compile_operand ctxt (Reg R12) operand_1) @
       (compile_operand ctxt (Reg R13) operand_2) @
       [
-        (Subq, [Reg R13; Reg R12]);
+        (Imulq, [Reg R12; Reg R13]);
+        (Movq, [Reg R13; (lookup ctxt.layout uid)])
+      ]
+    | Shl ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg Rcx) operand_2) @
+      [
+        (Shlq, [Reg Rcx; Reg R12]);
         (Movq, [Reg R12; (lookup ctxt.layout uid)])
       ]
-    | _ -> []
+    | Lshr ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg Rcx) operand_2) @
+      [
+        (Shrq, [Reg Rcx; Reg R12]);
+        (Movq, [Reg R12; (lookup ctxt.layout uid)])
+      ]
+    | Ashr ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg Rcx) operand_2) @
+      [
+        (Sarq, [Reg Rcx; Reg R12]);
+        (Movq, [Reg R12; (lookup ctxt.layout uid)])
+      ]
+    | And ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg R13) operand_2) @
+      [
+        (Andq, [Reg R12; Reg R13]);
+        (Movq, [Reg R13; (lookup ctxt.layout uid)])
+      ]
+    | Or ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg R13) operand_2) @
+      [
+        (Orq, [Reg R12; Reg R13]);
+        (Movq, [Reg R13; (lookup ctxt.layout uid)])
+      ]
+    | Xor ->
+      (compile_operand ctxt (Reg R12) operand_1) @
+      (compile_operand ctxt (Reg R13) operand_2) @
+      [
+        (Xorq, [Reg R12; Reg R13]);
+        (Movq, [Reg R13; (lookup ctxt.layout uid)])
+      ]
+    )
 
-*)
+  (* ALLOCA *)
+  | Alloca ty -> (
+      match ty with
+      | I1 | Ptr _ | I64 ->
+        [
+          (Subq, [Imm (Lit 8L); Reg Rsp]);
+          (Movq, [Reg Rsp; (lookup ctxt.layout uid)])
+        ]
+      | _ -> []
+    )
+
+  (* LOAD *)
+  | Load (_, operand_1) ->
+    (compile_operand ctxt (Reg R12) operand_1) @
+    [
+      (Movq, [Ind2 R12; Reg R14]);
+      (Movq, [Reg R14; (lookup ctxt.layout uid)])
+    ]
+
+  (* STORE *)
+  | Store (_, operand_1, operand_2) ->
+    (compile_operand ctxt (Reg R12) operand_1) @
+    (compile_operand ctxt (Reg R13) operand_2) @
+    [(Movq, [Reg R12; Ind2 R13])]
+
+  (* ICMP *)
+  | Icmp (cnd, _, operand_1, operand_2) ->
+    (compile_operand ctxt (Reg R12) operand_1) @
+    (compile_operand ctxt (Reg R13) operand_2) @
+    [
+      (Movq, [(Imm (Lit 0L)); (lookup ctxt.layout uid)]);
+      (Cmpq, [Reg R13; Reg R12]);
+      (Set (compile_cnd cnd) , [(lookup ctxt.layout uid)])
+    ]
+
+  (* CALL *)
+  | Call _ -> []
+
+  (* BITCAST *)
+  | Bitcast (_, operand_1, _) ->
+    (compile_operand ctxt (Reg R12) operand_1) @
+    [(Movq, [Reg R12; (lookup ctxt.layout uid)])]
+
+  (* GEP *)
+  | Gep _ -> []
+
 (* compiling terminators  --------------------------------------------------- *)
 
 (* prefix the function name [fn] to a label to ensure that the X86 labels are
@@ -344,7 +437,11 @@ let arg_loc (n : int) : operand =
 
 *)
 let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
-  let stk_idx = ref 0 in
+  (**
+   * Stack always contain rbx, r12, r13, r14, r15 before args, therefore the
+   * initial stack offset for args is 6 in this layout
+   *)
+  let stk_idx = ref 6 in
   let get_uid (insn:uid * insn) =
     match insn with
     | (uid, _) -> uid
@@ -356,7 +453,7 @@ let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   let uids = args @ blk_uids in
 
   let acc_uid acc uid =
-    let acc' = acc @ [(uid, Ind3(Lit(Int64.of_int (!stk_idx * 8)), Rsp))] in
+    let acc' = acc @ [(uid, Ind3(Lit(Int64.of_int (!stk_idx * -8)), Rbp))] in
     stk_idx := !stk_idx + 1;
     acc'
   in
