@@ -96,8 +96,8 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins list =
     | Const x -> [Movq, [Imm(Lit x); dest]]
     | Gid id  -> [Leaq, [Ind3((Lbl(Platform.mangle id)), Rip); dest]]
     | Id id   -> [
-        (Movq, [(lookup ctxt.layout id); Reg(R11)]);
-        (Movq, [Reg(R11); dest])
+        (Movq, [(lookup ctxt.layout id); Reg R11]);
+        (Movq, [Reg R11; dest])
       ]
 
 (* compiling call  ---------------------------------------------------------- *)
@@ -258,17 +258,39 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
   match t with
   | Ret (ty, operand) ->
+    (* Deallocate stack, restore callee save registers *)
     let exit_sequence = [
-        (* Restore callee save registers *)
         (Movq, [(Ind3(Lit(Int64.neg 8L) , Rbp)); (Reg Rbx)]);
         (Movq, [(Ind3(Lit(Int64.neg 16L), Rbp)); (Reg R12)]);
         (Movq, [(Ind3(Lit(Int64.neg 24L), Rbp)); (Reg R13)]);
         (Movq, [(Ind3(Lit(Int64.neg 32L), Rbp)); (Reg R14)]);
         (Movq, [(Ind3(Lit(Int64.neg 40L), Rbp)); (Reg R15)]);
-    ] in
-    []
-  | Br lbl -> []
-  | Cbr (operand, lbl1, lbl2) -> []
+        (Movq, [Reg Rbp; Reg Rsp]);
+        (Popq, [Reg Rbp]);
+        (Retq, [])
+    ]
+    in
+    begin match operand with
+      | Some op ->
+          begin match ty with
+            | Void -> exit_sequence
+            | _    -> (compile_operand ctxt (Reg Rax) op) @ exit_sequence
+          end
+      | None -> exit_sequence
+    end
+
+  | Br lbl -> [(Jmp, [Imm (Lbl (mk_lbl fn lbl))])]
+  | Cbr (operand, lbl1, lbl2) ->
+    begin match operand with
+      | Const _ | Gid _ | Id _ ->
+        (compile_operand ctxt (Reg R10) operand) @
+        [
+          (Cmpq, [Imm(Lit 1L); Reg R10]);
+          (J Eq, [Imm(Lbl(mk_lbl fn lbl1))]);
+          (Jmp,  [Imm(Lbl(mk_lbl fn lbl2))])
+        ]
+      | Null -> failwith "ERR: Fail to compile null operand as terminator"
+    end
 
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -322,7 +344,23 @@ let arg_loc (n : int) : operand =
 
 *)
 let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
-failwith "stack_layout not implemented"
+  let stk_idx = ref 0 in
+  let get_uid (insn:uid * insn) =
+    match insn with
+    | (uid, _) -> uid
+  in
+  let get_uids_from_blk (blk:block) = List.map get_uid blk.insns in
+  let uids_entry_blk = get_uids_from_blk block in
+  let uids_labled_blks = List.map (fun (_, blk) -> get_uids_from_blk blk) lbled_blocks in
+  let blk_uids = List.flatten (uids_entry_blk :: uids_labled_blks) in
+  let uids = args @ blk_uids in
+
+  let acc_uid acc uid =
+    let acc' = acc @ [(uid, Ind3(Lit(Int64.of_int (!stk_idx * 8)), Rsp))] in
+    stk_idx := !stk_idx + 1;
+    acc'
+  in
+  List.fold_left acc_uid [] uids
 
 (* The code for the entry-point of a function must do several things:
 
@@ -349,18 +387,16 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string)
     | (blk, blks) -> blk, blks
   in
 
-  let entry_term_uid, entry_term =
-    match entry_blk with
-    | { insns = _; term = (uid, terminator) } -> uid, terminator
-  in
-
   (* Helper function: maps i-th arg to stack slot  *)
   let map_arg_to_stk (i:int) (uid:uid) : ins list =
      let op = arg_loc i in
-     [
-       (Movq, [op; Reg R10]);
-       (Movq, [Reg R10; lookup ctxt.layout uid])
-     ]
+     match op with
+     | Reg Rdi | Reg Rsi | Reg Rdx
+     | Reg Rcx | Reg R08 | Reg R09 -> [(Movq, [op; lookup ctxt.layout uid])]
+     | _ -> [
+         (Movq, [op; Reg R10]);
+         (Movq, [Reg R10; lookup ctxt.layout uid])
+       ]
   in
   let compiled_args = List.flatten (List.mapi map_arg_to_stk f_param) in
 
@@ -373,22 +409,22 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string)
     (Pushq, [Reg R13]);
     (Pushq, [Reg R14]);
     (Pushq, [Reg R15]);
-    (* (Movq, [Reg Rsp; Reg R11]); *)
     (Subq,  [Imm(Lit(Int64.of_int ((List.length ctxt.layout) * 8))); Reg Rsp])
   ]
   in
 
+  (* Entry block compiled instructions *)
   let entry_compiled_insns = [
     Asm.gtext(Platform.mangle name)
     (
       entry_sequence
       @ compiled_args
       @ (compile_block name ctxt entry_blk)
-      @ (compile_terminator name ctxt entry_term)
     )
   ]
   in
 
+  (* Labeled blocks compiled instructions *)
   let lbl_blks_compiled_insns =
     List.map (fun (lbl, blk) -> compile_lbl_block name lbl ctxt blk) lbl_blks
   in
