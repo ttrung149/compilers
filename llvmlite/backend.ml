@@ -120,10 +120,30 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins list =
    needed). ]
 *)
 
-(*let compile_call (ctxt:ctxt) (op:operand, args:(ty * operand) list) : ins =
+let compile_call (ctxt:ctxt) (op:Ll.operand) (args:(ty * Ll.operand) list): ins list =
+  let compile_ith_arg (i:int) (arg:(ty * Ll.operand)): ins list =
+    let (_, ll_operand) = arg in
+    match i with
+    | 0 -> (compile_operand ctxt (Reg Rdi) ll_operand)
+    | 1 -> (compile_operand ctxt (Reg Rsi) ll_operand)
+    | 2 -> (compile_operand ctxt (Reg Rdx) ll_operand)
+    | 3 -> (compile_operand ctxt (Reg Rcx) ll_operand)
+    | 4 -> (compile_operand ctxt (Reg R08) ll_operand)
+    | 5 -> (compile_operand ctxt (Reg R09) ll_operand)
+    | _ -> (compile_operand ctxt (Reg R10) ll_operand) @ [(Pushq, [Reg R10])]
+  in
+  let compiled_args_to_locs = List.flatten (List.mapi compile_ith_arg args) in
+  let compiled_call = (compile_operand ctxt (Reg R11) op) @ [(Callq, [Reg R11])] in
 
-  *)
+  let args_on_stk = List.length args - 6 in
+  if args_on_stk > 0 then
+    let compiled_clean_up_args_on_stk =
+      [(Addq, [(Imm(Lit(Int64.of_int(8 * args_on_stk)))); Reg Rsp])]
+    in
+    compiled_args_to_locs @ compiled_call @ compiled_clean_up_args_on_stk
 
+  else
+    compiled_args_to_locs @ compiled_call
 
 
 (* compiling getelementptr (gep)  ------------------------------------------- *)
@@ -320,7 +340,8 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     ]
 
   (* CALL *)
-  | Call _ -> []
+  | Call (_, operand, args) ->
+    (compile_call ctxt operand args) @ [(Movq, [Reg Rax; (lookup ctxt.layout uid)])]
 
   (* BITCAST *)
   | Bitcast (_, operand_1, _) ->
