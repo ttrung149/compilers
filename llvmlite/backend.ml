@@ -160,6 +160,7 @@ let compile_call (ctxt:ctxt) (op:Ll.operand) (args:(ty * Ll.operand) list): ins 
 (* [size_ty] maps an LLVMlite type to a size in bytes.
     (needed for getelementptr)
 
+
    - the size of a struct is the sum of the sizes of each component
    - the size of an array of t's with n elements is n * the size of t
    - all pointers, I1, and I64 are 8 bytes
@@ -169,15 +170,48 @@ let compile_call (ctxt:ctxt) (op:Ll.operand) (args:(ty * Ll.operand) list): ins 
      Your function should simply return 0 in those cases
 *)
 let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
-  let acc_size (size:int) (ll_type:Ll.ty) : int =
-    size + (size_ty tdecls ll_type)
-  in
   match t with
   | Void | I8  | Fun _ -> 0
   | I1   | I64 | Ptr _ -> 8
-  | Struct elems -> List.fold_left acc_size 0 elems
+  | Struct elems ->
+    let acc_size (size:int) (ll_type:Ll.ty) : int =
+      size + (size_ty tdecls ll_type)
+    in
+    List.fold_left acc_size 0 elems
   | Array (num, t) -> (size_ty tdecls t) * num
   | Namedt tid -> size_ty tdecls (lookup tdecls tid)
+
+
+(**
+ * GETELEMPTR HELPER FUNCTION:
+ * Compile instructions that calculates element offset
+ *)
+let compile_offset (tdecls:(tid * ty) list) ((ptr_type, acc):Ll.ty * ins list)
+                                             (amount:int64): Ll.ty * ins list =
+  match ptr_type with
+  | Array (_, ty) ->
+    let offset_size = Int64.of_int (size_ty tdecls ty) in
+    (ty, acc @ [(Addq, [Imm(Lit(Int64.mul offset_size amount)); Reg R14])])
+
+  | Struct types_list ->
+    (* Iterate through struct and accumulate offset for each field *)
+    let rec compile_struct_offset (curr_idx:int64) (end_idx:int64) (accum:ins list) : ins list =
+      if curr_idx = end_idx then accum
+      else
+        let curr_idx_offset
+          = Int64.of_int(size_ty tdecls (List.nth types_list (Int64.to_int curr_idx)))
+        in
+        let acc' =
+          accum @ [(Addq, [(Imm(Lit(curr_idx_offset))); Reg R14])]
+        in
+        compile_struct_offset (Int64.add curr_idx 1L) end_idx acc'
+    in
+
+    (* Update next pointer type *)
+    let ptr_type' = List.nth types_list (Int64.to_int amount) in
+    (ptr_type', (compile_struct_offset 0L amount acc))
+
+  | _ -> failwith "ERR: Invalid offset pointer type for getelementptr"
 
 
 (* Generates code that computes a pointer value.
@@ -206,7 +240,48 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
       by the path so far
 *)
 let compile_gep (ctxt:ctxt) (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
-failwith "compile_gep not implemented"
+  match op with
+  | (Ptr p , operand) ->
+
+    (* Get compiled instructions to fetch base ptr *)
+    let compiled_base_ptr = compile_operand ctxt (Reg R14) operand in
+
+    let path_head = List.hd path in
+    let path_tail = List.tl path in
+
+    (* Get compiled instructions to offset base ptr by first index in path *)
+    let compiled_offset_by_first_path_idx =
+      (compile_operand ctxt (Reg R15) path_head) @
+      [
+        (Imulq, [Imm(Lit(Int64.of_int(size_ty ctxt.tdecls p))); Reg R15]);
+        (Addq,  [Reg R15; Reg R14])
+      ]
+    in
+
+    (* Get offset amount array from path operands *)
+    let offsetted_amount_arr =
+      let get_offset_amount (op:Ll.operand) =
+        begin match op with
+         | Const x -> x
+         | _ -> 0L
+        end
+      in
+      List.map get_offset_amount path_tail
+    in
+
+    let ptr_type = match p with
+      | Namedt tid -> lookup ctxt.tdecls tid
+      | _ -> p
+    in
+
+    let (_, compiled_offset_by_remaining_path_idx) =
+      List.fold_left (compile_offset ctxt.tdecls) (ptr_type, []) offsetted_amount_arr
+    in
+    compiled_base_ptr @
+    compiled_offset_by_first_path_idx @
+    compiled_offset_by_remaining_path_idx
+
+  | _ -> []
 
 
 
@@ -349,7 +424,10 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [(Movq, [Reg R12; (lookup ctxt.layout uid)])]
 
   (* GEP *)
-  | Gep _ -> []
+  | Gep (ty, operand, operands) ->
+    (compile_gep ctxt (ty, operand) operands) @
+    [(Movq, [Reg R14; (lookup ctxt.layout uid)])]
+
 
 (* compiling terminators  --------------------------------------------------- *)
 
