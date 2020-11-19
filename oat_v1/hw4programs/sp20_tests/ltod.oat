@@ -1,0 +1,116 @@
+/*
+ *			Hannah Pan	3/28/2020
+ *
+ *		argument		output
+ *		23				4037000000000000
+ *		-9876543210234	C2D674E79FC65C80
+ */
+
+global zero = 48;	/* '0' */
+global isNegative = false;
+
+int getNumBits(int i)	/* i >= 0 */
+{
+	var n = 0;
+
+	for (; i > 0; i = i >> 1;) {
+		n = n + 1;
+	}
+
+	return n;
+}
+
+int binary64(int integer)	/* integer >= 0 */
+{
+	var fp64 = 0;
+
+	if (isNegative) {
+		fp64 = 1 << 63;	/* sign bit */
+	}
+
+	if (integer == 0) {
+		return fp64;
+	}
+
+	var msbIdx = getNumBits(integer) - 1;
+	var exponent = msbIdx + 1023;	/* biased */
+
+	integer = integer [&] ~(1 << msbIdx);
+
+	var precision = 52;
+	var extraNumBits = msbIdx - precision;
+
+	if (extraNumBits > 0) {
+		integer = integer >> extraNumBits;
+	} else {
+		integer = integer << -extraNumBits;
+	}
+
+	return fp64 [|] exponent << precision [|] integer;
+}
+
+int atoi(string str)
+{
+	var i = 0;
+	var ascii = array_of_string(str);
+
+	if (ascii[0] == 45) {	/* '-' */
+		isNegative = true;
+		i = 1;
+	}
+
+	if (ascii[i] == 0) {	/* '\0' */
+		return 0;
+	}
+
+	var n = 0;
+
+	while (true) {
+		var digit = ascii[i] - zero;
+
+		if (digit < 0 | digit > 9) {
+			return n;
+		}
+
+		n = n * 10 + digit;
+		i = i + 1;
+	}
+
+	return n;
+}
+
+int getHexDigit(int nibble)	/* 0 thru 15 */
+{
+	var letter = nibble - 10;
+
+	if (letter < 0) {
+		return nibble + zero;
+	}
+
+	return letter + 65;	/* 'A' */
+}
+
+string getHex(int quadword)
+{
+	var numNibbles = 64 >> 2;
+	var hex = new int[numNibbles];
+
+	for (var i = numNibbles - 1; i >= 0; i = i - 1;) {
+		hex[i] = getHexDigit(quadword [&] 15);
+		quadword = quadword >> 4;
+	}
+
+	return string_of_array(hex);
+}
+
+int program(int argc, string[] argv)
+{
+/*
+	print_string(getHex(binary64(atoi("23"))));
+	print_string("\n");
+*/
+	print_string(getHex(binary64(atoi("-98765432101234"))));
+	print_string("\n");
+
+	return 0;
+}

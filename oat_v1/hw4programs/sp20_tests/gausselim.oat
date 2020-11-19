@@ -1,0 +1,64 @@
+
+/* [ 1 2 -1 1 ]
+   [ 0 1 4 -7 ]
+   [ 0 0 1 -5 ] 
+   Assumptions: mat is full rank, gaussian elim yields only ints
+*/
+
+int divide (int i, int j) {
+  var neg = 1;
+  if (i < 0) {
+    neg = neg * -1;
+    i = i * -1;
+  }
+  if (j < 0) {
+    neg = neg * -1;
+    j = j * -1;
+  }
+  var result = 0;
+  while (i > 0) {
+    i = i - j;
+    result = result + 1;
+  }
+  return result * neg;
+}
+
+void guassianElim(int[][] mat, int rows, int cols) {
+  for (var i = 0; i < rows; i = i + 1;) {
+    var first = mat[i][i];
+    for (var j = i; j < cols; j = j + 1;) {
+      mat[i][j] = divide(mat[i][j],first);
+    }
+    for (var j = i+1; j < rows; j = j + 1;) { /* row we're up to */
+      var first2 = mat[j][i];
+      for (var k = i; k < cols; k = k + 1;) {
+        mat[j][k] = mat[j][k] - first2 * mat[i][k];
+      }
+    }
+  }
+  return;
+}
+
+void print_mat(int[][] mat, int rows, int cols) {
+  for (var i = 0; i < rows; i = i + 1;) {
+    print_string("[ ");
+    for (var j = 0; j < cols; j = j + 1;) {
+      print_int(mat[i][j]);
+      print_string(" ");
+    }
+    print_string("]\n");
+  }
+  print_string("\n");
+  return;
+}
+
+
+int program(int argc, string[] args) {
+  var row1 = new int[]{4, 8, (-4), 4};
+  var row2 = new int[]{3, 8, 5, -11};
+  var row3 = new int[]{-2, 1, 12, 13};
+  var mat = new int[][]{ row1, row2, row3 };
+  guassianElim(mat, 3, 4);
+  print_mat(mat, 3, 4);
+  return 1; 
+}

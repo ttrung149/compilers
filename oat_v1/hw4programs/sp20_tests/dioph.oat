@@ -1,0 +1,53 @@
+
+int mod (int a, int b) {
+    var t = a;
+    while (t - b >= 0) {
+    	  t = t-b;
+	  
+    }
+    return t;
+}
+
+int gcd (int a, int b) {
+
+    while (b != 0) {
+    	  var t = b;
+	  b = mod (a, b);
+	  a = t;
+    }
+
+    return a;
+}
+
+
+int div (int a, int b) {
+    var leftover = mod (a, b);
+    var ap = a - leftover;
+    var quotient = 0;
+    while (ap > 0) {
+    	  quotient = quotient + 1;
+	  ap = ap - b;
+    }
+
+    return quotient;
+}
+
+bool canSolve (int a, int b , int c) {
+     var start = gcd (a, b);
+     return (mod (c, start) == 0);
+}
+
+/* Finds a solution for a diophantine equation */
+void program (int argc, string[] argv) {
+
+    var x = 3;
+    var y = 6;
+    var z = 9;
+    if (canSolve(x,y,z)) {
+       print_string ("Solvable");
+    } else {
+       print_string ("Not Solvable");
+    }
+
+    return;
+}

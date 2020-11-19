@@ -1,0 +1,31 @@
+int[] slowsort(int[] array, int l, int h) {
+    /* the spitting image of intelligent recursion */
+    if (l == h) {
+        return array;
+    }
+
+    var m = (l + h) >> 1;
+    var l_sorted = slowsort(array, l, m);
+    var sorted = slowsort(l_sorted, m + 1, h);
+
+    if (sorted[m + 1] < sorted[l]) {
+        var temp = sorted[l];
+        sorted[l] = sorted[m + 1];
+        sorted[m + 1] = temp;
+    }
+
+    return slowsort(sorted, l + 1, h);
+}
+
+int program(int argc, string[] argv) {
+	/* set your expectations low! */
+    var array = new int[]{2,8,1,5,4,3,6,0,7};
+    var sorted = slowsort(array, 0, 8);
+    var output = 0;
+    for (var i = 0; i < 9; i = i + 1;) {
+        if (sorted[i] != i) {
+            output = 1;
+        }
+    }
+    return output;
+}

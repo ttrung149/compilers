@@ -1,0 +1,26 @@
+
+void swap(int[] a, int i, int j) {
+  var tmp = a[i];
+  a[i] = a[j];
+  a[j] = tmp;
+  return;
+}
+
+void bubblesort(int[] arr, int len) {
+  for (var i = 0; i < len; i=i+1;) {
+    for (var j = i+1; j < len; j=j+1;) {
+      if (arr[i] > arr[j]) {
+        swap(arr, i, j);
+      }
+    }
+  }
+  return;
+}
+
+int program(int argc, string[] argv) {
+  var toSort      = new int[]{5,4,3,2,1};
+  var sortedArray = new int[]{1,2,3,4,5};
+  var n = 5;
+  bubblesort(toSort, n);
+  return toSort[4];
+}

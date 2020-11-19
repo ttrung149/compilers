@@ -1,0 +1,72 @@
+global plus = 43;
+global minus = 45;
+global lt = 60;
+global gt = 62;
+global comma = 44;
+global period = 46;
+global lbracket = 91;
+global rbracket = 93;
+
+global code = ",>,[-<+>]<.";
+global input_stream = new int[]{ 10, 23 };
+global length = 11;
+
+int[] exec(string raw_code, int[] input_stream) {
+  var code = array_of_string(raw_code);
+  var code_index = 0;
+  var input_index = 0;
+
+  var tape = new int[10];
+  var tape_index = 0;
+
+  var output_stream = new int[10];
+  var output_index = 0;
+
+  while (code_index < length) {
+    if (code[code_index] == plus) {
+      tape[tape_index] = tape[tape_index] + 1;
+    } else if (code[code_index] == minus) {
+      tape[tape_index] = tape[tape_index] - 1;
+    } else if (code[code_index] == gt) {
+      tape_index = tape_index + 1;
+    } else if (code[code_index] == lt) {
+      tape_index = tape_index - 1;
+    } else if (code[code_index] == rbracket & tape[tape_index] != 0) {
+      var endloops_seen = 0;
+
+      while (endloops_seen >= 0) {
+        code_index = code_index - 1;
+        if (code[code_index] == rbracket) {
+          endloops_seen = endloops_seen + 1;
+        } else if (code[code_index] == lbracket) {
+          endloops_seen = endloops_seen - 1;
+        }
+      }
+    } else if (code[code_index] == lbracket & tape[tape_index] == 0) {
+      var beginloops_seen = 0;
+
+      while (beginloops_seen >= 0) {
+        code_index = code_index + 1;
+        if (code[code_index] == lbracket) {
+          beginloops_seen = beginloops_seen + 1;
+        } else if (code[code_index] == rbracket) {
+          beginloops_seen = beginloops_seen - 1;
+        }
+      }
+    } else if (code[code_index] == comma) {
+      tape[tape_index] = input_stream[input_index];
+      input_index = input_index + 1;
+    } else if (code[code_index] == period) {
+      output_stream[output_index] = tape[tape_index];
+      output_index = output_index + 1;
+    }
+
+    code_index = code_index + 1;
+  }
+
+  return output_stream;
+}
+
+int program(int argc, string[] argv) {
+  return exec(code, input_stream)[0];
+}

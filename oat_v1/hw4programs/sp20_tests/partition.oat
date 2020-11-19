@@ -1,0 +1,29 @@
+/* Partitions an array around the last value */
+
+void swap(int[] arr, int a, int b) {
+    var temp = arr[a];
+    arr[a] = arr[b];
+    arr[b] = temp;
+    return;
+}
+
+int partition(int[] arr, int lo, int hi) {
+	var pivot = arr[hi];
+	var i = lo - 1;
+
+	for (var j = lo; j <= hi - 1; j = j + 1;) {
+		if (arr[j] < pivot) {
+		   i = i + 1;
+		   swap(arr, i, j);
+		}
+	}
+	swap(arr, i + 1, hi);
+	return (i + 1);
+}
+
+int program(int argc, string[] argv) {
+	var input = new int[]{12, 3, 6, 1, 5};
+	var mid = partition(input, 0, 4);
+	print_int(mid);
+	return 0;
+}

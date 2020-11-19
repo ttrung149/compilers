@@ -1,0 +1,27 @@
+global arr1 = new int[]{4,3,6,1,7,2};
+
+int secondLargest(int[] ar1, int ind, int max, int sec, int total) {
+    var newMax = 0;
+    var newSec = 0;
+
+    if(ind >= total) {
+        return sec;
+    }
+
+    if(ar1[ind] > max) {
+        newSec = max;
+        newMax = ar1[ind];
+    } else if (ar1[ind] > sec) {
+        newSec = ar1[ind];
+        newMax = max;
+    } else {
+        newSec = sec;
+        newMax = max;
+    }
+
+    return secondLargest(ar1, ind+1, newMax, newSec, total);
+}
+
+int program(int argc, string[] argv) {
+    return secondLargest(arr1, 0, 0, 0, 6);
+}

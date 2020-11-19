@@ -1,0 +1,15 @@
+int program (int argc, string[] argv) {
+    if (argc != 2) {
+        return -1;
+    }
+    var array = array_of_string(argv[1]);
+    for(var i=0; array[i] != 0; i=i+1;){
+        if(array[i] >= 97 & array[i] <= 122){
+            array[i] = array[i] [&] ~32;
+        }
+    }
+    var str = string_of_array(array);
+    print_string(str);
+    
+    return 0;
+}

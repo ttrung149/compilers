@@ -1,0 +1,82 @@
+/* Dana Yi (danayi) and Aleena Brown (aleena) */
+/* CIS341 Spring 2020 */
+
+global numVertices = 8;
+global visited = new int[]{0, 0, 0, 0, 0, 0, 0, 0};
+global traverse = new int[]{0, 0, 0, 0, 0, 0, 0, 0};
+global index = 0;
+
+/* Simple Implementation of a Queue */
+global queue = new int[]{0, 0, 0, 0, 0, 0, 0, 0};
+global head = 0;
+global tail = 0;
+global size = 0;
+
+void add(int elt) {
+    queue[tail] = elt;
+    tail = tail + 1;
+    size = size + 1;
+    return;
+}
+
+int poll() {
+    var ret = queue[head];
+    head = head + 1;
+    size = size - 1;
+    return ret;
+}
+
+int size_q() {
+    return size;
+}
+
+
+void bfs(int[][] adj, int start) {
+    visited[start] = 1;
+    add(start);
+    traverse[index] = start;
+    index = index + 1; 
+
+    while (size_q() != 0) {
+        var s = poll();
+        	
+        var stringRep = string_of_array(adj[s]);
+	    var length = length_of_string(stringRep);
+        
+        for (var i = 0; i < length; i = i + 1;) {
+            if (visited[i] == 0) {
+                visited[i] = 1;
+                traverse[index] = i;
+                index = index + 1;
+                add(i);
+            }
+        }
+    }
+
+	return;
+}
+
+int program(int argc, string[] argv) {
+	/* Graph taken from https://ds055uzetaobb.cloudfront.net/brioche/uploads/IWSLTHNA40-bfs_example.png?width=1200 */
+    /* Where all edges are directed in the downward direction */
+	var adjList = new int[][]{
+                  new int []{1, 3, 4},  /* A */
+                  new int []{2},        /* B */
+                  new int []{},         /* C */
+                  new int []{},         /* D */
+                  new int []{5},        /* E */
+                  new int []{6, 7},     /* F */
+                  new int []{},         /* G */
+                  new int []{}          /* H */
+                  };
+    
+	bfs(adjList, 0);
+
+	for (var i = 0; i < numVertices; i = i + 1;) {
+		print_int(traverse[i]);
+		print_string (" ");
+	}
+	print_string ("-"); 
+
+	return 0;
+}

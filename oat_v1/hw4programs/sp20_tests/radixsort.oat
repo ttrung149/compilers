@@ -1,0 +1,29 @@
+int[] radixsort(int[] data, int length, int maxbound) {
+  var x = new int[maxbound];
+  for (var i = 0; i < length; i = i+1;){
+    if (data[i] >= maxbound) {
+      return new int[]{};
+    } else {
+      x[data[i]] = x[data[i]] + 1;
+    }
+  }
+  var y = new int[length];
+  var count = 0;
+  for (var j = 0; j < length; j = j+1;){
+    while (x[count] == 0) {
+      count = count + 1;
+    }
+    y[j] = count;
+    x[count] = x[count] - 1;
+  }
+
+  return y;
+}
+
+int program (int argc, string[] args) {
+  var y = radixsort (new int[]{1,5,4,3}, 4, 6);
+  for (var j = 0; j < 4; j = j+1;){
+    print_int (y[j]);
+  }
+  return 0;
+}

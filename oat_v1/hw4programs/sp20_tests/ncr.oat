@@ -1,0 +1,27 @@
+int fact(int x) {
+    var result = 1;
+    while (x > 0) {
+        result = result * x;
+        x = x - 1;
+    }
+    return result;
+}
+
+int div(int x, int y) {
+    var result = 0;
+    if (y > x) {
+        return 0;
+    }
+    var temp = x - y;
+    return 1 + div(temp, y);
+}
+
+int program (int argc, string[] argv) 
+{
+    var n = 10;
+    var r = 3;
+    var nFac = fact (n);
+    var rFac = fact (r);
+    var ans = div (nFac, (rFac * fact (n - r)));
+    return ans;
+}

@@ -1,0 +1,25 @@
+int chinese_remainer_theorem (int mod1, int mod2, int rem1, int rem2) {
+	var i1 = rem1;
+	var i2 = rem2;
+
+	while (i1 != i2) {
+		if (i1 < i2) {
+			i1 = i1 + mod1;
+		} else {
+			i2 = i2 + mod2;
+		}
+	}
+	
+	return i1;
+}
+
+
+int program(int argc, string[] argv) {
+
+	return chinese_remainer_theorem(5, 7, 1, 3);
+}
+
+
+
+
+

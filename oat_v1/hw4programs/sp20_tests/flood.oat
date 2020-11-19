@@ -1,0 +1,53 @@
+global length = 4;
+global width = 5;
+
+void flood(int x, int y, int[][] grid) {
+    if (grid[x][y] == 0 | grid[x][y] == 2) {
+        return;
+    }
+    else {
+        grid[x][y] = 2;
+        if (x > 0) {
+            flood(x - 1, y, grid);
+        }
+        if (y > 0) {
+            flood(x, y - 1, grid);
+        }
+        if (x < length - 1) {
+            flood(x + 1, y, grid);
+        }
+        if (y < width - 1) {
+            flood(x, y + 1, grid);
+        }
+	return;
+    }
+}
+
+
+int countIslands(int[][] ocean) {
+    var count = 0;
+    
+    for (var x = 0; x < length; x = x + 1;) {
+    	for (var y = 0; y < width; y = y + 1;) {
+            if (ocean[x][y] == 1) {
+                count = count + 1;
+                flood(x, y, ocean);
+	    }
+        }
+    }
+    return count;
+}
+
+int program(int argc, string[] argv) {
+  var ocean1 = new int[][]{new int[]{1, 1, 1, 1, 0},
+      	      	  	   new int[]{1, 1, 0, 1, 0},
+			   new int[]{1, 1, 0, 0, 0},
+			   new int[]{0, 0, 0, 1, 0}};
+
+  var ocean2 = new int[][]{new int[]{1, 1, 0, 0, 0},
+      	      	  	   new int[]{1, 1, 0, 0, 0},
+			   new int[]{0, 0, 1, 0, 0},
+			   new int[]{0, 0, 0, 1, 1}};
+ 
+  return(countIslands(ocean1) + countIslands(ocean2));
+}

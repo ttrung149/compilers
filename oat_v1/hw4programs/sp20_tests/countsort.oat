@@ -1,0 +1,49 @@
+
+int max(int i, int j) {
+	if (i < j) {
+		return i;
+	}
+
+	return j;
+}
+
+int max_arr(int length, int[] arr) {
+	var m = arr[0];
+	for (var i = 0; i < length; i = i + 1 ) {
+		m = max(m, i);
+	}
+
+	return m;
+}
+
+
+int[] countSort(int length, int[] arr) {
+	var m = max_arr(length, arr);
+	var s = new int[m];
+
+	for (var i = 0; i < length; i = i + 1) {
+		s[i] = 1;
+	}
+
+	var sp = new int[length];
+	var idx = 0;
+	for (var j = 0; j < m; j = j + 1) {
+		if (s[j] == 1) {
+			sp[idx] = j; 
+			idx = idx + 1;
+		} 
+	}
+
+}
+
+
+
+int program(int argc, string[] argv) {
+	var to_sort = new int[]{1,4,3,2}; /* array to sort */
+	var length = 4; /* size of the array to sort*/
+
+	var sorted = countSort(4, to_sort);
+	
+	print_string (string_of_array(sorted));
+
+}

@@ -1,0 +1,124 @@
+/*
+void flip(int arr[], int i)
+{
+    int temp, start = 0;
+    while (start < i)
+    {
+        temp = arr[start];
+        arr[start] = arr[i];
+        arr[i] = temp;
+        start++;
+        i--;
+    }
+}
+
+// Returns index of the
+// maximum element in
+// arr[0..n-1]
+int findMax(int arr[], int n)
+{
+int mi, i;
+for (mi = 0, i = 0; i < n; ++i)
+    if (arr[i] > arr[mi])
+            mi = i;
+return mi;
+}
+
+// The main function that
+// sorts given array using
+// flip operations
+int pancakeSort(int *arr, int n)
+{
+    // Start from the complete
+    // array and one by one
+    // reduce current size
+    // by one
+    for (int curr_size = n; curr_size > 1; --curr_size)
+    {
+        // Find index of the
+        // maximum element in
+        // arr[0..curr_size-1]
+        int mi = findMax(arr, curr_size);
+
+        // Move the maximum
+        // element to end of
+        // current array if
+        // it's not already
+        // at the end
+        if (mi != curr_size-1)
+        {
+            // To move at the end,
+            // first move maximum
+            // number to beginning
+            flip(arr, mi);
+
+            // Now move the maximum
+            // number to end by
+            // reversing current array
+            flip(arr, curr_size-1);
+        }
+    }
+}
+*/
+
+void array_to_str (int[] a, int l) {
+  for (var i = 0; i < l; i = i + 1;) {
+    print_int(a[i]);
+    print_string(" ");
+  }
+
+  return;
+}
+
+void flip (int[] a, int p) {
+  var t = 0;
+  var s = 0;
+
+  while (s < p) {
+    t = a[s];
+    a[s] = a[p];
+    a[p] = t;
+    s = s + 1;
+    p = p - 1;
+  }
+
+  return;
+}
+
+int max (int[] a, int l) {
+  var max_v = 0;
+
+  for (var i = 0; i < l; i = i + 1;) {
+    if (a[i] > a[max_v]) {
+      max_v = i;
+    }
+  }
+
+  return max_v;
+}
+
+
+void sort(int[] a, int l) {
+  for (var c = l; c > 1; c = c - 1;) {
+    var max_v = max(a, c);
+
+    if (max_v != c - 1) {
+      flip(a, max_v);
+      flip(a, c - 1);
+    }
+  }
+
+  return;
+}
+
+int program (int argc, string[] argv) {
+    var a = new int[]{4, 5, 1, 2, 3};
+    var l = 5;
+
+    sort(a, l);
+
+    array_to_str(a, l);
+	  print_string("\n");
+
+    return 0;
+}

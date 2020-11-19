@@ -1,0 +1,47 @@
+int min2(int a, int b) {
+    if (a < b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+int min3(int a, int b, int c) {
+    return min2(min2(a, b), c);
+}
+
+
+int editdistance(int[] a, int[] b, int m, int n) {
+    var dist = new int[][n+1];
+    for (var i=0; i<=n; i=i+1;) {
+        dist[i] = new int[m+1];
+    }
+    for (var i=0; i<=m; i=i+1;) {
+        for (var j=0; j<=n; j=j+1;) {
+            if (i == 0) {
+                dist[i][j] = j;
+            } else {
+                if (j == 0) {
+                    dist[i][j] = i;
+                } else {
+                    if (a[i-1] == b[i-1]) {
+                        dist[i][j] = 1 + dist[i-1][j-1];
+                    } else {
+                        var d1 = dist[i-1][j];
+                        var d2 = dist[i][j-1];
+                        var d3 = dist[i-1][j-1];
+                        dist[i][j] = 1 + min3(d1, d2, d3);
+                    }
+                }
+            }
+        }
+    }
+    return dist[m][n];
+}
+
+int program (int argc, string[] argv) {
+    var a = new int[]{107, 105, 116, 116, 101, 110};
+    var b = new int[]{98, 97, 98, 121, 115, 105, 116, 116, 105, 110, 103};
+    var dist = editdistance(a, b, 6, 11);
+    return dist;
+}

@@ -1,0 +1,145 @@
+/* Linear time selection algorithm (quickselect with median of medians) */
+
+/* Helper functions and smaller subroutines: */ 
+
+/* finds index of min of portion of nonempty array */
+int findMin(int[] arr, int lo, int hi) {
+    var min = arr[lo];
+    var idx = lo;
+    for(var i = lo; i < hi; i = i + 1;) {
+        if (arr[i] < min) {
+            min = arr[i];
+            idx = i;
+        }
+        else {
+
+        }
+    }
+    return idx;
+}
+
+/*selection sort - works from lo to hi portion of array (used only on small arrays in selection algorithm)*/
+void selectionSort(int[] arr, int lo, int hi) {
+    for(var i = lo; i < hi; i = i + 1;) {
+        var min = findMin(arr, i, hi);
+        swap(arr, i, min);
+    }
+    return;
+}
+
+/* finds the median via sorting (used only for small arrays) */
+int median(int[] arr, int lo, int hi) {
+    selectionSort(arr, lo, hi);
+    var mid = (hi - lo) >>> 1;
+    return arr[lo + mid];
+}
+
+/*swap two elements */
+void swap(int[] arr, int a, int b) {
+    var temp = arr[a];
+    arr[a] = arr[b];
+    arr[b] = temp;
+    return;
+}
+
+/* inefficient division algorithm */
+int divide(int num, int den) {
+    var result = 0;
+    while((num - den) > 0) {
+        result = result + 1;
+        num = num - den;
+    }
+    return result;
+}
+
+/* partition: This differs from the standard algorithm by taking in a pivot. Based on algorithm in CLRS. */
+int partition(int[] arr, int lo, int hi, int pivot) {
+    /*search for pivot - only adds O(n) time */
+    var idx = 0;
+    for(var i = lo; i < hi; i = i + 1;) {
+        if(arr[i] == pivot) {
+            idx = i;
+        }
+    }
+    /* move pivot to end and run CLRS alg */
+    swap(arr, idx, hi - 1);
+    /* if chosen pivot is not in array, choose 1st element arbitrarily */
+    pivot = arr[hi - 1];
+    var i = lo - 1;
+    for(var j = lo; j < hi; j = j + 1;) {
+        if(arr[j] < pivot) {
+            i = i + 1;
+            swap(arr, i, j);
+        }
+    }
+    swap(arr, i+1, hi - 1);
+    return i+1;
+}
+
+/* The algorithm: select the idx^th smallest element in the subarray arr[lo...hi] */
+int select(int[] arr, int lo, int hi, int idx) {
+    /* base case: if the portion of the array is smaller than 5, compute with brute force */
+    var size = hi - lo;
+    if(size < 5) {
+        selectionSort(arr, lo, hi);
+        return arr[lo + idx];
+    }
+    /* divide the array into groups of 5 */
+    var smallerLength = divide(size, 5);
+
+    /* only go up to 5 * smallerLength */
+    var newHi = lo + 5 * smallerLength;
+    var smaller = new int[smallerLength];
+
+    /* temp array to find median of each group of 5 */
+    var workingArray = new int[5];
+
+    /* index of workingArray */
+    var counter = 0;
+
+    /* which group of 5 we are in */
+    var arr5idx = 0;
+
+    for(var i = lo; i < newHi; i = i + 1;) {
+        workingArray[counter] = arr[i];
+        if(counter == 4) {
+            var med = median(workingArray, 0, 5);
+            smaller[arr5idx] = med;
+            counter = 0;
+            arr5idx = arr5idx + 1;
+        }
+        else {
+            counter = counter + 1;
+        }
+    }
+    /* recursively compute the result for the smaller array */
+    var medOfMed = select(smaller, 0, smallerLength, smallerLength >>> 1);
+
+    /*now that we have our good pivot, run the selection algorithm */
+    var q = partition(arr, lo, hi, medOfMed);
+    var k = q - lo;
+    if (idx == k) {
+        return arr[q];
+    }
+    if (idx < k) {
+        return select(arr, lo, q, idx);
+    }
+    else {
+        return select(arr, q +1, hi, idx - k - 1);
+    }
+} 
+
+/* Simple test for selection algorithm: find median of array */
+int program(int argc, string[] argv) {
+    var array = new int[]{4, 5, 6, 10, 8, 0, 57, 3, 1, 11, 12, 100};
+    var length = 12;
+    var med = select(array, 0, 12, 6);
+    return med;
+}
+
+
+
+
+
+
+

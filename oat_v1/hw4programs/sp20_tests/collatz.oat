@@ -1,0 +1,42 @@
+/* collatz conjecture */
+/* calculates the total stopping time of a number */
+
+bool isEven(int n) {
+    var bitmask = 1;
+    var masked = n [&] bitmask;
+    if (masked == 0) {
+        return true;
+    }
+    return false;
+}
+
+/* divide an even number in half */
+int half(int n) {
+    return n >> 1;
+}
+
+int f(int n) {
+    if (isEven(n)) {
+        return half(n);
+    }
+    
+    return (3 * n) + 1;
+    
+}
+
+int stopping_time(int n) {
+    var a = n;
+    var i = 0;
+    while (a != 1) {
+        print_string(string_of_int(a));
+        print_string(" ");
+        a = f(a);
+        i = i + 1;
+    }
+    return i;
+}
+
+int program (int argc, string[] argv) {
+    var s = stopping_time(12);
+    return 0;
+}

@@ -1,0 +1,46 @@
+int max(int i, int j) {
+  if (i > j) {
+    return i;
+  }
+  return j;
+}
+
+int knapsack(int[][] dp, int n, int w, int[] weight, int[] value) {
+    if (dp[n][w] != -1) {
+      return dp[n][w];
+    } 
+
+    if (n == 0 | w == 0) {
+      dp[n][w] = 0;
+      return 0;
+    }
+    /* dp[n-1][w - weight[n]] + value[n] or dp[n-1][w]   */
+    if (w >= weight[n-1]) {
+        dp[n][w] = max(knapsack(dp, n-1, w - weight[n-1], weight, value) + value[n-1],
+                       knapsack(dp, n-1, w, weight, value));
+    } else {
+        dp[n][w] = knapsack(dp, n-1, w, weight, value);
+    }
+    return dp[n][w];
+}
+
+int program(int argc, string[] argv) {
+  var dp1 = new int[][] {new int[51], new int[51], new int[51], new int[51]};
+  for (var i = 0; i < 4; i = i + 1;) {
+    for (var j = 0; j < 51; j = j + 1;) {
+      dp1[i][j] = -1;
+    }
+  }
+
+  var val = new int[] {60, 100, 120};
+  var wt = new int[] {10, 20, 30};
+  
+  print_string("\nKnapsack is Cool!\n");
+  var s = "The answer is:\n";
+  print_string(s);
+  var ans = knapsack(dp1, 3, 50, wt, val);
+  print_int(ans);
+  print_string("\n");
+
+  return ans;
+}
