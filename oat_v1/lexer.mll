@@ -29,13 +29,18 @@
   ("null", NULL);
   ("void", TVOID);
   ("int", TINT);
+  ("bool", TBOOL);
+  ("true", BOOL true);
+  ("false", BOOL false);
   ("string", TSTRING);
   ("else", ELSE);
   ("if", IF);
   ("while", WHILE);
+  ("for", FOR);
   ("return", RETURN);
   ("var", VAR);
   ("global", GLOBAL);
+  ("new", NEW);
 
   (* Symbols *)
   ( ";", SEMI);
@@ -45,15 +50,26 @@
   ( "+", PLUS);
   ( "-", DASH);
   ( "*", STAR);
+  ( "<<", LTLT);
+  ( ">>", GTGT);
+  ( ">>>", GTGTGT);
+  ( "<", LT);
+  ( "<=", LEQ);
+  ( ">", GT);
+  ( ">=", GEQ);
   ( "=", EQ);
   ( "==", EQEQ);
+  ( "!=", BANGEQ);
+  ( "&", AMP);
+  ( "|", PIPE);
+  ( "[&]", BRACAMP);
+  ( "[|]", BRACPIPE);
   ( "!", BANG);
   ( "~", TILDE);
   ( "(", LPAREN);
   ( ")", RPAREN);
   ( "[", LBRACKET);
   ( "]", RBRACKET);
-  
   ]
 
 let (symbol_table : (string, Parser.token) Hashtbl.t) = Hashtbl.create 1024
@@ -61,8 +77,8 @@ let (symbol_table : (string, Parser.token) Hashtbl.t) = Hashtbl.create 1024
     List.iter (fun (str,t) -> Hashtbl.add symbol_table str t) reserved_words
 
   let create_token lexbuf =
-    let str = lexeme lexbuf in 
-    try (Hashtbl.find symbol_table str) 
+    let str = lexeme lexbuf in
+    try (Hashtbl.find symbol_table str)
     with _ -> IDENT str
 
   (* Lexing comments and strings *)
@@ -129,6 +145,9 @@ rule token = parse
 
   | ';' | ',' | '{' | '}' | '+' | '-' | '*' | '=' | "==" 
   | "!=" | '!' | '~' | '(' | ')' | '[' | ']' 
+  | '>'  | '<' 
+  | ">=" | "<=" | "<<" | ">>" | ">>>"
+  | '&'  | '|'  | "[&]" | "[|]"
     { create_token lexbuf }
 
   | _ as c { unexpected_char lexbuf c }
