@@ -1,0 +1,24 @@
+int mod(int a, int b) {
+  var t = a;
+  while (t - b >= 0) {
+      t = t - b;
+  }
+  return t;
+}
+
+bool is_not_divisor(int x, int num) {
+  var t1 = ((x * x) > num);
+  var t2 = (mod(num, x) != 0) & (is_not_divisor(x + 1, num));
+  return t1 | t2;
+}
+
+bool is_prime(int num) {
+  var t1 = (num != 1);
+  var t2 = is_not_divisor(2, num);
+  return t1 & t2;
+}
+
+int program (int argc, string[] argv) {
+  print_bool(is_prime(17);
+  return 0;
+}
