@@ -248,6 +248,9 @@ let old_student_tests = [
   ; ("hw4programs/maxsubsequence.oat", "", "107")
 ]
 
+let my_test = [
+    ("coprime.oat", "", "1")
+]
 
 let tests : suite =
   [ GradedTest("parse tests", 15, parse_tests);
@@ -261,10 +264,10 @@ let tests : suite =
 
 let manual_tests : suite = [
   GradedTest ("Posted Piazza Test Case", 5,
-    [  ]
+    executed_oat_file my_test
   );
   GradedTest ("Other Student Piazza Tests", 5,
-     [("manually", assert_fail)]
+     [("manually", (assert_eq 1 1))]
   )
 ]
 
